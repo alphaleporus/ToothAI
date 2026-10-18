@@ -6,6 +6,7 @@ import io
 import os
 import threading
 import traceback
+from contextlib import nullcontext
 from datetime import datetime
 
 import cv2
@@ -216,9 +217,13 @@ def _findings_frame(result, notation):
 def render():
     demo = demo_requested() or not detectron2_available()
     samples = list_samples()
+    phone = ui.is_phone()
+    ui.page_header("Analyse", "Detection · segmentation · numbering · anatomical mapping",
+                   badge="Research prototype", demo=demo)
 
-    # ---------------- sidebar: the case
-    with st.sidebar:
+    # ---------------- the case: sidebar on a desktop, a card above the results on a phone
+    has_case = bool(st.session_state.get("ta_upload") or st.session_state.get("ta_sample"))
+    with ui.controls("Case and settings" if has_case else None):
         st.html('<div class="ta-eyebrow">Case</div>')
         consent = demo or st.checkbox("Process this radiograph for this session only; don't store it",
                                       key="ta_consent")
@@ -235,31 +240,30 @@ def render():
             sample = st.pills("Sample cases", [s["name"] for s in samples], key="ta_sample",
                               format_func=lambda n: next(s["description"] for s in samples if s["name"] == n),
                               help="De-identified validation images with the model's own cached detections.")
-        case_id = safe_case_id(st.text_input("Case ID", key="ta_case", max_chars=40,
-                                             placeholder="Optional. No patient names.",
-                                             help="Letters, digits, spaces and _ . - only."))
-        mode = st.segmented_control("Analysis", list(MODES), default="Full chart", key="ta_mode",
-                                    help="Full chart numbers every tooth and maps findings to it. "
-                                         "Findings only skips numbering.") or "Full chart"
-        with st.expander("Detection thresholds", icon=":material/tune:"):
-            teeth_t = st.slider("Tooth score", 0.10, 0.50, DEFAULT_TEETH_THRESHOLD, 0.05, key="ta_tt",
-                                help="Minimum detection score for a tooth. Lower finds more teeth "
-                                     "and more false ones.")
-            find_t = st.slider("Finding score", 0.10, 0.80, DEFAULT_FINDINGS_THRESHOLD, 0.05, key="ta_ft",
-                               help="Minimum detection score for a finding.")
-        engine = st.segmented_control(
-            "Numbering", ["v2", "v1"], default=DEFAULT_ENGINE, key="ta_engine",
-            format_func=lambda e: {"v1": "Published", "v2": "Improved"}[e],
-            help="Improved (the default) cleans up before numbering, numbers each tooth by its position from "
-                 "the midline and never drops a detected tooth. Published is the earlier engine, measured in "
-                 "the paper; choose it to compare."
-        ) or DEFAULT_ENGINE
-        notation = st.segmented_control("Tooth notation", ["FDI", "Universal"], default="FDI",
-                                        key="ta_notation") or "FDI"
+        settings = st.expander("Settings", icon=":material/settings:") if phone else nullcontext()
+        with settings:
+            case_id = safe_case_id(st.text_input("Case ID", key="ta_case", max_chars=40,
+                                                 placeholder="Optional. No patient names.",
+                                                 help="Letters, digits, spaces and _ . - only."))
+            mode = st.segmented_control("Analysis", list(MODES), default="Full chart", key="ta_mode",
+                                        help="Full chart numbers every tooth and maps findings to it. "
+                                             "Findings only skips numbering.") or "Full chart"
+            with st.expander("Detection thresholds", icon=":material/tune:"):
+                teeth_t = st.slider("Tooth score", 0.10, 0.50, DEFAULT_TEETH_THRESHOLD, 0.05, key="ta_tt",
+                                    help="Minimum detection score for a tooth. Lower finds more teeth "
+                                         "and more false ones.")
+                find_t = st.slider("Finding score", 0.10, 0.80, DEFAULT_FINDINGS_THRESHOLD, 0.05, key="ta_ft",
+                                   help="Minimum detection score for a finding.")
+            engine = st.segmented_control(
+                "Numbering", ["v2", "v1"], default=DEFAULT_ENGINE, key="ta_engine",
+                format_func=lambda e: {"v1": "Published", "v2": "Improved"}[e],
+                help="Improved (the default) cleans up before numbering, numbers each tooth by its position from "
+                     "the midline and never drops a detected tooth. Published is the earlier engine, measured in "
+                     "the paper; choose it to compare."
+            ) or DEFAULT_ENGINE
+            notation = st.segmented_control("Tooth notation", ["FDI", "Universal"], default="FDI",
+                                            key="ta_notation") or "FDI"
         st.caption(f"{'Demo mode · cached detections' if demo else MODEL_VERSION}")
-
-    ui.page_header("Analyse", "Detection · segmentation · numbering · anatomical mapping",
-                   badge="Research prototype", demo=demo)
 
     # ---------------- input
     image_rgb, source_key = None, None
@@ -280,7 +284,8 @@ def render():
         ui.empty_state()
         if demo:
             st.info("Demo mode: Detectron2 or the model weights aren't available here, so you can open the "
-                    "sample cases on the left. They run through the real numbering engine.",
+                    f"sample cases {'above' if phone else 'on the left'}. They run through the real numbering "
+                    "engine.",
                     icon=":material/info:")
         ui.footer()
         return
@@ -362,6 +367,8 @@ def render():
             a, b = st.columns(2, gap="small")
             a.image(image_rgb, caption="Original", width="stretch")
             b.image(overlay, caption="ToothAI", width="stretch")
+        elif phone:   # a plotly viewer captures touch, so the page can't scroll past it; pick teeth below
+            st.image(overlay if view == "Overlay" else image_rgb, width="stretch")
         else:
             shown = overlay if view == "Overlay" else image_rgb
             st.plotly_chart(viewer_figure(shown, result, notation, height=int(min(720, 820 * h / w))),
@@ -370,7 +377,10 @@ def render():
                                     "modeBarButtonsToRemove": ["select2d", "lasso2d", "toImage", "autoScale2d"]})
         kinds = {f["type"] for t in result.teeth for f in t["findings"]} | {a["class_name"] for a in result.findings}
         ui.legend(kinds, color_by)
-        st.caption("Drag to zoom into a region, double-click to reset, use the hand tool to pan. Click a tooth to inspect it."
+        st.caption(("Choose a tooth under Inspect tooth to see why it got its number."
+                    if phone else
+                    "Drag to zoom into a region, double-click to reset, use the hand tool to pan. Click a tooth to "
+                    "inspect it.")
                    + ("  Demo: the teeth model's cached single-pass detections on a validation image."
                       if result.source == "demo" else ""))
 

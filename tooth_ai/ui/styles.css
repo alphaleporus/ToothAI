@@ -86,3 +86,20 @@
 .ta-stat .ci { font: 400 0.76rem "JetBrains Mono", monospace; color: #5B6B78; }
 .ta-stat .l { font-size: 0.84rem; color: #33475B; margin-top: 0.3rem; font-weight: 500; }
 .ta-stat .n { font-size: 0.74rem; color: #5B6B78; }
+
+/* phone layout (components.is_phone): controls card at the top, tab bar at the bottom */
+.st-key-ta_controls { background: #FFFFFF; }
+.st-key-ta_controls [data-testid="stFileUploaderDropzoneInstructions"] { display: none; }
+.st-key-ta_controls [data-testid="stFileUploaderDropzone"] { padding: 0.35rem 0.5rem; }
+.st-key-ta_tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 999990; background: #FFFFFF;
+  border-top: 1px solid #C9D4E0; padding: 0.25rem 0.25rem calc(0.25rem + env(safe-area-inset-bottom));
+  justify-content: space-around; box-shadow: 0 -4px 14px rgba(14, 34, 54, 0.06); }
+.st-key-ta_tabbar > div { flex: 1 1 0; min-width: 0; }
+.st-key-ta_tabbar a { flex-direction: column; gap: 0.1rem; padding: 0.3rem 0.1rem; justify-content: center;
+  align-items: center; text-align: center; border-radius: 10px; }
+.st-key-ta_tabbar a p, .st-key-ta_tabbar a span { font-size: 0.68rem; line-height: 1.1; margin: 0; }
+.st-key-ta_tabbar a [data-testid="stIconMaterial"] { font-size: 1.35rem; }
+.block-container:has(.st-key-ta_tabbar) { padding-top: 3.5rem; padding-bottom: 5.5rem; }
+/* the tab bar replaces the collapsed menu on phones */
+body:has(.st-key-ta_tabbar) [data-testid="stExpandSidebarButton"],
+body:has(.st-key-ta_tabbar) [data-testid="stSidebarCollapsedControl"] { display: none; }

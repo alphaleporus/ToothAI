@@ -3,13 +3,13 @@
 from __future__ import annotations
 
 import base64
+from contextlib import nullcontext
 
 import pandas as pd
 import streamlit as st
 
 from photo_screening.ui import client
 from tooth_ai.ui import components as ui
-from tooth_ai.ui import theme
 
 SLOTS = (
     ("front", "Front (required)", "Smile with teeth together, lips pulled back."),
@@ -78,8 +78,9 @@ def _empty_state(photos: dict) -> None:
     st.html(
         f'<div class="ta-hero"><img src="{mark}" alt="">'
         '<h2>Screen your teeth with phone photos</h2>'
-        '<p>Add up to five photos in the panel on the left, or try the sample photos. Photos are analysed in '
-        'memory and not stored. This is a screening aid, not a diagnosis.</p>'
+        f'<p>Add up to five photos {"above" if ui.is_phone() else "in the panel on the left"}, or try the '
+        'sample photos. Photos are analysed in memory and not stored. This is a screening aid, not a '
+        'diagnosis.</p>'
         '<div class="ta-steps">'
         '<div><em>01</em><b>Check</b><span>Each photo is checked for blur, light and resolution.</span></div>'
         '<div><em>02</em><b>Detect</b><span>Possible decay, tooth wear, fillings and crowns.</span></div>'
@@ -147,10 +148,8 @@ def _results(rep: dict, api_ok: bool) -> None:
                                file_name=f"tooth-ai-screening-{rep['report_id']}.pdf", mime="application/pdf",
                                use_container_width=True)
     with b:
-        st.html('<a href="./" target="_self" style="display:flex;align-items:center;justify-content:center;'
-                f'min-height:2.5rem;border-radius:10px;border:1px solid {theme.SLATE_300};background:#fff;'
-                f'color:{theme.INK_900};text-decoration:none;font-size:.9rem;font-weight:500">'
-                'Analyse an X-ray (OPG)</a>')
+        if ui.PAGES.get("analyze"):   # a page link: on phones "/" is this page, not Analyse
+            st.page_link(ui.PAGES["analyze"], label="Analyse an X-ray (OPG)", icon=":material/radiology:")
 
     tabs = st.tabs([f"{VIEW_NAMES[i['view']]}" + (f" ({sum(f['band'] != 'Low' for f in i['findings'])})"
                                                   if i["analysed"] else " (retake)") for i in rep["images"]])
@@ -201,17 +200,23 @@ def render() -> None:
             "section[data-testid='stSidebar'] [data-testid='stFileUploaderDropzone']{padding:.3rem .45rem;}"
             "section[data-testid='stSidebar'] [data-testid='stFileUploaderDropzoneInstructions']{display:none;}"
             "</style>")
+    ui.page_header("Photo screening", "Smartphone photos · a screening aid, not a diagnosis", badge="Beta")
 
-    # ---------------- sidebar: the case
-    with st.sidebar:
+    # ---------------- the photos: sidebar on a desktop, a card above the results on a phone
+    with ui.controls("Photos and options" if st.session_state.get("ps_report") else None):
         st.html('<div class="ta-eyebrow">Photos</div>')
         consent = st.checkbox("Process my photos for this session only; don't store them", key="ps_consent")
         st.caption("Mouth only: keep your full face, name tags and anything else that identifies you out of "
                    "the photos. Location and camera details are removed before analysis.")
         photos: dict[str, tuple[str, bytes, str]] = {}
+        # On a phone the optional views fold away so "Analyse photos" stays near the top of the card.
+        more = None
         for view, label, helptext in SLOTS:
-            f = st.file_uploader(label, type=["jpg", "jpeg", "png", "heic", "heif"], key=f"ps_up_{view}",
-                                 disabled=not consent, help=helptext)
+            if view != "front" and more is None and ui.is_phone():
+                more = st.expander("More views: upper, lower and sides (recommended)", icon=":material/add_a_photo:")
+            with more if (more is not None and view != "front") else nullcontext():
+                f = st.file_uploader(label, type=["jpg", "jpeg", "png", "heic", "heif"], key=f"ps_up_{view}",
+                                     disabled=not consent, help=helptext)
             if f is not None:
                 photos[view] = (f.name, f.getvalue(), f.type or "image/jpeg")
             elif view in samples:
@@ -245,7 +250,6 @@ def render() -> None:
             if api_ok else []
         st.caption(" + ".join(loaded) if loaded else "Photo service not running")
 
-    ui.page_header("Photo screening", "Smartphone photos · a screening aid, not a diagnosis", badge="Beta")
     if not api_ok:
         _banner("alert", "The photo screening service isn't running.",
                 [payload, "Start it from the repo root: uvicorn photo_screening.app.main:app --port 8001"])
@@ -256,6 +260,8 @@ def render() -> None:
         with st.spinner("Checking photo quality and analysing" + note):
             try:
                 st.session_state["ps_report"] = client.analyze(photos, use_vlm=use_vlm, mirrored=mirrored)
+                if ui.is_phone():
+                    st.rerun()   # fold the photo card away so the result sits at the top
             except client.PhotoApiBusy as e:
                 st.warning(str(e), icon=":material/hourglass_top:")
             except client.PhotoApiError as e:

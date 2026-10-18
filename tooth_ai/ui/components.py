@@ -3,6 +3,7 @@
 import base64
 import html
 import io
+import re
 from functools import lru_cache
 
 import streamlit as st
@@ -17,6 +18,45 @@ from tooth_ai.ui.theme import FDI_ROW_LOWER, FDI_ROW_UPPER, PARTNER_LOGOS, SEVER
 
 def esc(text):
     return html.escape(str(text), quote=True)
+
+
+# ------------------------------------------------------------------ phone layout
+
+_PHONE_UA = re.compile(r"iPhone|iPod|Android.+Mobile|Windows Phone|Mobile Safari", re.I)
+PAGES = {}   # url key -> st.Page, filled by app.py (for links between pages and the phone tab bar)
+
+
+def is_phone() -> bool:
+    """Phone layout: controls on the page instead of the sidebar, and a tab bar. Decided from the browser's
+    user agent (tablets get the desktop layout); ``?layout=phone`` or ``?layout=desktop`` overrides it for the
+    session."""
+    forced = st.query_params.get("layout")
+    if forced in ("phone", "desktop"):
+        st.session_state["ta_layout"] = forced
+    if st.session_state.get("ta_layout") in ("phone", "desktop"):
+        return st.session_state["ta_layout"] == "phone"
+    try:
+        ua = st.context.headers.get("User-Agent", "")
+    except Exception:  # no request context (tests, bare mode)
+        ua = ""
+    return bool(_PHONE_UA.search(ua))
+
+
+def controls(collapsed_label=None):
+    """Where a page's inputs go: the sidebar on a desktop; on a phone, a card at the top of the page, folded
+    into an expander labelled ``collapsed_label`` once there is a result to show below it."""
+    if not is_phone():
+        return st.sidebar
+    if collapsed_label:
+        return st.expander(collapsed_label, icon=":material/tune:")
+    return st.container(border=True, key="ta_controls")
+
+
+def phone_tabbar(items):
+    """Bottom tab bar on phones. items: [(page, label, icon)]."""
+    with st.container(horizontal=True, key="ta_tabbar", gap=None):
+        for page, label, icon in items:
+            st.page_link(page, label=label, icon=icon)
 
 
 @lru_cache(maxsize=1)
@@ -264,10 +304,11 @@ def tooth_detail(tooth, result, notation="FDI"):
 
 
 def empty_state():
+    where = "Use the controls above" if is_phone() else "Use the panel on the left"
     st.html(
         f'<div class="ta-hero"><img src="{data_uri("assets/brand/tooth-ai-mark.svg")}" alt="">'
         f'<h2>Upload a panoramic radiograph (OPG)</h2>'
-        f'<p>JPG, PNG or BMP, up to 15 MB. Use the panel on the left, or open a sample case. '
+        f'<p>JPG, PNG or BMP, up to 15 MB. {where}, or open a sample case. '
         f'Images are analysed in memory and are not stored.</p>'
         f'<div class="ta-steps">'
         f'<div><em>01</em><b>Detect</b><span>Instance masks for every tooth and finding.</span></div>'
