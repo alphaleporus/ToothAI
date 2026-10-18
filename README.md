@@ -118,7 +118,7 @@ On an Apple Silicon Mac the photo API uses the GPU (MPS) when available: about 1
 ## Deploy
 
 The public demo runs on an Oracle Cloud **Always Free** ARM VM (2 OCPU, 12 GB) with Docker and Caddy
-(automatic HTTPS). Images are built on an arm64 Mac and streamed to the VM; nothing is compiled there.
+(automatic HTTPS). The images are built on an arm64 Mac and streamed to the VM; nothing is compiled there.
 Step-by-step runbook, costs and limits: [`deploy/README.md`](deploy/README.md).
 
 ```bash
